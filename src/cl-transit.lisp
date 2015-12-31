@@ -4,9 +4,26 @@
 
 (defvar *parse-mode-list-as-vector* nil)
 (defvar *parse-mode-object-as-hash* nil)
-(defvar *parse-mode-null-object*)
-(defvar *parse-mode-true-object*)
-(defvar *parse-mode-false-object*)
+(defvar *parse-mode-null-object* nil)
+(defvar *parse-mode-true-object* t)
+(defvar *parse-mode-false-object* nil)
+
+(defclass transit-wrapper-mixin ()
+  ((value :type string
+          :initarg :value
+          :reader transit-wrapper-mixin/value)))
+
+(defmethod print-object ((obj transit-wrapper-mixin) stream)
+  (print-unreadable-object (obj stream :type t)
+    (format stream "~s" (if (slot-boundp obj 'value)
+                            (slot-value obj 'value)
+                            :not-bound))))
+
+(defclass uuid (transit-wrapper-mixin)
+  ())
+
+(defclass url (transit-wrapper-mixin)
+  ())
 
 (defun decode-transit-string (string)
   (let ((tag (aref string 1)))
@@ -32,8 +49,8 @@
                  (truncate v 1000)
                (local-time:unix-to-timestamp secs :nsec (* msecs 1000000)))))
       (#\t (local-time:parse-rfc3339-timestring (subseq string 2)))
-      (#\u (subseq string 2)) ; uuid:make-uuid-from-string could be used here, should it?
-      (#\r (subseq string 2)) ; and puri:uri could be used here
+      (#\u (make-instance 'uuid :value (subseq string 2)))
+      (#\r (make-instance 'url :value (subseq string 2)))
       (#\c (if (/= (length string) 3)
                (error "Unexpected char value: ~s" string)
                (aref string 2))))))
@@ -79,7 +96,7 @@
     (etypecase first-element
       (string (parse-transit-string-element first-element))
       (number first-element)
-      (null *parse-mode-null-object**)
+      (null *parse-mode-null-object*)
       (keyword (ecase first-element
                  (:true *parse-mode-true-object*)
                  (:false *parse-mode-false-object*)
@@ -87,11 +104,6 @@
                  (:begin-array (parse-array js))
                  (:eof (error "Premature EOF")))))))
 
-(defun parse-stream (s &key list-as-vector object-as-hash null-val (true-val t) (false-val nil))
+(defun parse-stream (s)
   (let ((json-stream (json-streams:make-json-input-stream s)))
-    (let ((*parse-mode-list-as-vector* list-as-vector)
-          (*parse-mode-object-as-hash* object-as-hash)
-          (*parse-mode-null-object* null-val)
-          (*parse-mode-true-object* true-val)
-          (*parse-mode-false-object* false-val))
-      (parse-element json-stream))))
+    (parse-element json-stream)))
